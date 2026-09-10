@@ -54,18 +54,29 @@ export async function createDownloadUrl(
   }
 
   const data = await response.json();
+
+  // 1. If server returned an absolute HTTPS URL, use it directly (this is the authoritative server hosting the file)
+  if (data.downloadUrl && (data.downloadUrl.startsWith('https://') || data.downloadUrl.startsWith('http://'))) {
+    if (!data.downloadUrl.includes('localhost') && !data.downloadUrl.includes('127.0.0.1')) {
+      return data.downloadUrl;
+    }
+  }
+
   const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : '';
   const isLocalOrigin = origin.includes('localhost') || origin.includes('127.0.0.1');
 
-  // If the browser has a public origin (not localhost and not android webview assets), use it!
+  // 2. Only use origin if not a foreign host (e.g. blogspot, wordpress, etc.) and not android asset
   if (origin && !isLocalOrigin && !origin.includes('appassets.androidplatform.net') && (origin.startsWith('https://') || origin.startsWith('http://'))) {
-    return `${origin}${data.downloadPath || ('/api/download/' + data.id + '/' + encodeURIComponent(fileName))}`;
+    const isForeignHost = origin.includes('blogspot.') || origin.includes('wordpress.') || origin.includes('github.io');
+    if (!isForeignHost) {
+      return `${origin}${data.downloadPath || ('/api/download/' + data.id + '/' + encodeURIComponent(fileName))}`;
+    }
   }
 
-  if (data.downloadUrl && (data.downloadUrl.startsWith('https://') || (data.downloadUrl.startsWith('http://') && !data.downloadUrl.includes('localhost')))) {
+  if (data.downloadUrl) {
     return data.downloadUrl;
   }
-  return `${origin}${data.downloadUrl || data.downloadPath}`;
+  return `${origin}${data.downloadPath || ('/api/download/' + data.id + '/' + encodeURIComponent(fileName))}`;
 }
 
 /**
@@ -530,62 +541,107 @@ export async function saveToGoogleDrive(
 }
 
 /**
+ * Builds an Android Chrome Custom Tabs Intent URL.
+ * When visited or clicked on Android, this directly instructs Android OS to launch
+ * Google Chrome (Custom Tab / browser) and open the URL directly.
+ */
+export function buildChromeIntent(url: string): string {
+  const cleanUrl = url.replace(/^https?:\/\//i, '');
+  const scheme = url.startsWith('http://') ? 'http' : 'https';
+  return `intent://${cleanUrl}#Intent;scheme=${scheme};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;package=com.android.chrome;end`;
+}
+
+export function buildBrowserIntent(url: string): string {
+  const cleanUrl = url.replace(/^https?:\/\//i, '');
+  const scheme = url.startsWith('http://') ? 'http' : 'https';
+  return `intent://${cleanUrl}#Intent;scheme=${scheme};action=android.intent.action.VIEW;category=android.intent.category.BROWSABLE;end`;
+}
+
+/**
  * Opens a URL in Chrome Custom Tabs (inside Android app) or a new browser tab (on web)
  */
 export function openInChromeCustomTabs(url?: string): void {
-  const targetUrl =
+  const rawUrl =
     url ||
     (typeof window !== 'undefined'
       ? window.location.href
-      : 'https://ais-pre-gxyvg3phkakhlvxkyoqcx7-32286104148.asia-southeast1.run.app');
+      : 'https://apkcreator25.blogspot.com');
 
+  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  const targetUrl =
+    rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
+      ? rawUrl
+      : `${origin}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+
+  // 1. Android Bridge if running inside native Android wrapper
   const androidBridge =
     (window as any).AndroidDownloader ||
     (window as any).AndroidApp ||
     (window as any).Android ||
     (window as any).JSBridge;
 
-  if (androidBridge && typeof androidBridge.openInCustomTabs === 'function') {
-    try {
-      androidBridge.openInCustomTabs(targetUrl);
-      return;
-    } catch (e) {
-      console.warn('Bridge openInCustomTabs failed:', e);
+  if (androidBridge) {
+    if (typeof androidBridge.openInCustomTabs === 'function') {
+      try {
+        androidBridge.openInCustomTabs(targetUrl);
+        return;
+      } catch (e) {
+        console.warn('Bridge openInCustomTabs failed:', e);
+      }
+    }
+
+    if (typeof androidBridge.downloadUrl === 'function') {
+      try {
+        androidBridge.downloadUrl(targetUrl);
+        return;
+      } catch (e) {
+        console.warn('Bridge downloadUrl failed:', e);
+      }
     }
   }
 
-  if (androidBridge && typeof androidBridge.downloadUrl === 'function') {
-    try {
-      androidBridge.downloadUrl(targetUrl);
-      return;
-    } catch (e) {
-      console.warn('Bridge downloadUrl failed:', e);
-    }
-  }
-
-  // Inside Android WebView or mobile browser:
+  // 2. Android device handling: Launch Chrome Intent to open Chrome Custom Tab directly!
   const isAndroid = typeof navigator !== 'undefined' && /android/i.test(navigator.userAgent);
   if (isAndroid) {
     try {
-      const a = document.createElement('a');
-      a.href = targetUrl;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
+      const chromeIntent = buildChromeIntent(targetUrl);
+      window.location.href = chromeIntent;
+
+      // Fallback intent if Chrome is not default
       setTimeout(() => {
-        if (document.body.contains(a)) document.body.removeChild(a);
-      }, 500);
-    } catch {}
-    try {
-      window.location.href = targetUrl;
-    } catch {}
-  } else {
-    try {
-      window.open(targetUrl, '_blank', 'noopener,noreferrer');
-    } catch {
+        try {
+          const browserIntent = buildBrowserIntent(targetUrl);
+          window.location.href = browserIntent;
+        } catch (_) {}
+      }, 400);
+
+      // Also trigger a real anchor click in parallel
+      setTimeout(() => {
+        try {
+          const a = document.createElement('a');
+          a.href = targetUrl;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          setTimeout(() => {
+            if (document.body.contains(a)) document.body.removeChild(a);
+          }, 500);
+        } catch (_) {}
+      }, 700);
+
+      return;
+    } catch (_) {}
+  }
+
+  // 3. Desktop / iOS / Web fallback
+  try {
+    const win = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    if (!win) {
       window.location.href = targetUrl;
     }
+  } catch {
+    window.location.href = targetUrl;
   }
 }
 

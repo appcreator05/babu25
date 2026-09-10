@@ -299,12 +299,20 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
     }
   };
 
-  const handleDownloadApkInCustomTab = async () => {
+  const handleDownloadApkInCustomTab = async (e?: React.MouseEvent) => {
     if (!buildResult?.apk) return;
     onToast('🚀 Custom Tab ওপেন হচ্ছে এবং APK ডাউনলোড শুরু হচ্ছে...');
 
-    if (buildResult.apk.downloadUrl) {
-      openInChromeCustomTabs(buildResult.apk.downloadUrl);
+    let url = buildResult.apk.downloadUrl;
+    if (!url && apkPackage?.blob) {
+      try {
+        url = await createDownloadUrl(apkPackage.blob, buildResult.apk.fileName, 'application/vnd.android.package-archive');
+        setBuildResult(prev => prev ? { ...prev, apk: { ...prev.apk, downloadUrl: url } } : prev);
+      } catch (_) {}
+    }
+
+    if (url) {
+      openInChromeCustomTabs(url);
     } else if (apkPackage?.blob) {
       await downloadBlobOrFile(
         apkPackage.blob,
@@ -315,12 +323,20 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
     }
   };
 
-  const handleDownloadAabInCustomTab = async () => {
+  const handleDownloadAabInCustomTab = async (e?: React.MouseEvent) => {
     if (!buildResult?.aab) return;
     onToast('📦 Custom Tab ওপেন হচ্ছে এবং AAB ডাউনলোড শুরু হচ্ছে...');
 
-    if (buildResult.aab.downloadUrl) {
-      openInChromeCustomTabs(buildResult.aab.downloadUrl);
+    let url = buildResult.aab.downloadUrl;
+    if (!url && aabPackage?.blob) {
+      try {
+        url = await createDownloadUrl(aabPackage.blob, buildResult.aab.fileName, 'application/octet-stream');
+        setBuildResult(prev => prev ? { ...prev, aab: prev.aab ? { ...prev.aab, downloadUrl: url } : null } : prev);
+      } catch (_) {}
+    }
+
+    if (url) {
+      openInChromeCustomTabs(url);
     } else if (aabPackage?.blob) {
       await downloadBlobOrFile(
         aabPackage.blob,
@@ -599,17 +615,72 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
                       </button>
                     </div>
 
+                    {/* Direct Uploaded Download URL Box with Copy & Open */}
+                    {info.downloadUrl && (
+                      <div className="p-3 bg-slate-950/90 rounded-xl border border-emerald-500/30 space-y-2">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-emerald-400 flex items-center gap-1.5">
+                            <Globe className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>সরাসরি ডাউনলোড লিঙ্ক ({activeTab.toUpperCase()} Uploaded):</span>
+                          </span>
+                          <span className="text-[10px] text-emerald-300 font-mono bg-emerald-950/90 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                            অনলাইন লিংক রেডি
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            readOnly
+                            value={info.downloadUrl}
+                            className="flex-1 bg-slate-900 border border-slate-700/80 rounded-lg px-2.5 py-2 text-[11px] text-slate-200 font-mono select-all outline-none"
+                            onClick={(e) => (e.target as HTMLInputElement).select()}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => copyUrl(info.downloadUrl, `${activeTab.toUpperCase()} লিঙ্ক`)}
+                            className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 cursor-pointer"
+                            title="লিংক কপি করুন"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{copiedLink ? 'কপি হয়েছে' : 'কপি'}</span>
+                          </button>
+                          <a
+                            href={info.downloadUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => {
+                              openInChromeCustomTabs(info.downloadUrl);
+                            }}
+                            className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition shrink-0 cursor-pointer no-underline"
+                            title="ক্রোম বা ব্রাউজারে ওপেন করুন"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                            <span>ওপেন</span>
+                          </a>
+                        </div>
+                      </div>
+                    )}
+
                     {/* Direct Download in Browser / Custom Tabs */}
                     <div className="pt-1 flex flex-col sm:flex-row gap-2">
-                      <button
-                        type="button"
-                        onClick={activeTab === 'apk' ? handleDownloadApkInCustomTab : handleDownloadAabInCustomTab}
-                        className="flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 active:scale-98 transition cursor-pointer"
+                      <a
+                        href={info.downloadUrl || '#'}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        download={info.fileName}
+                        onClick={(e) => {
+                          if (activeTab === 'apk') {
+                            handleDownloadApkInCustomTab(e);
+                          } else {
+                            handleDownloadAabInCustomTab(e);
+                          }
+                        }}
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 active:scale-98 transition cursor-pointer text-center no-underline"
                       >
                         <Download className="w-4 h-4" />
                         <span>Custom Tab দিয়ে ডাউনলোড</span>
                         <Globe className="w-3.5 h-3.5 text-emerald-200" />
-                      </button>
+                      </a>
 
                       <button
                         type="button"

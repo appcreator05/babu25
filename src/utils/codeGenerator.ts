@@ -430,7 +430,16 @@ ${
                     return true
                 }
 
-                // 2. Custom Tabs for External Links
+                // 2. Direct Binary Downloads (.apk, .aab, .zip, download routes) -> Always open in Custom Tabs
+                val lowerUrl = url.lowercase()
+                if (lowerUrl.endsWith(".apk") || lowerUrl.endsWith(".aab") || lowerUrl.endsWith(".zip") ||
+                    lowerUrl.contains("/api/download/") || lowerUrl.contains("/dl/") ||
+                    lowerUrl.contains("tmpfiles.org") || lowerUrl.contains("download")) {
+                    openInCustomTabs(url)
+                    return true
+                }
+
+                // 3. Custom Tabs for External Links
                 ${
                   config.useCustomTabs
                     ? `val currentHost = Uri.parse("${config.websiteUrl}").host ?: ""
@@ -473,23 +482,30 @@ ${
     private fun setupDownloadListener() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
             try {
-                val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val fileName = URLUtil.guessFileName(url, contentDisposition, mimetype)
-                val request = DownloadManager.Request(Uri.parse(url)).apply {
-                    setMimeType(mimetype)
-                    setTitle(fileName)
-                    setDescription("Downloading file...")
-                    setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                }
-                dm.enqueue(request)
-                Toast.makeText(this, "Download started: $fileName", Toast.LENGTH_SHORT).show()
+                // Open in Chrome Custom Tabs so Chrome handles full background download and saving
+                openInCustomTabs(url)
             } catch (e: Exception) {
                 try {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                    startActivity(intent)
+                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val fileName = URLUtil.guessFileName(url, contentDisposition, mimetype)
+                    val request = DownloadManager.Request(Uri.parse(url)).apply {
+                        setMimeType(mimetype)
+                        setTitle(fileName)
+                        setDescription("Downloading file...")
+                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                    }
+                    dm.enqueue(request)
+                    Toast.makeText(this, "Download started: $fileName", Toast.LENGTH_SHORT).show()
                 } catch (err: Exception) {
-                    Toast.makeText(this, "Download error: \${err.localizedMessage}", Toast.LENGTH_SHORT).show()
+                    try {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        startActivity(intent)
+                    } catch (err2: Exception) {
+                        Toast.makeText(this, "Download error: \${err2.localizedMessage}", Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -823,6 +839,10 @@ ${
                 .setShareState(CustomTabsIntent.SHARE_STATE_ON)
                 .build()
             customTabsIntent.intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                // Explicitly prefer Chrome package if installed for best compatibility
+                customTabsIntent.intent.setPackage("com.android.chrome")
+            } catch (_: Exception) {}
             customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
         } catch (e: Exception) {
             try {
@@ -845,6 +865,7 @@ ${
             try {
                 val intent = Intent.parseUri(url, Intent.URI_INTENT_SCHEME)
                 if (intent != null) {
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     val resolveInfo = packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY)
                     if (resolveInfo != null) {
                         startActivity(intent)
@@ -852,7 +873,7 @@ ${
                     }
                     val fallbackUrl = intent.getStringExtra("browser_fallback_url")
                     if (!fallbackUrl.isNullOrBlank()) {
-                        webView.loadUrl(fallbackUrl)
+                        openInCustomTabs(fallbackUrl)
                         return true
                     }
                 }

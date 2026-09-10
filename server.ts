@@ -171,6 +171,23 @@ async function startServer() {
     return res.send(fileBuffer);
   });
 
+  // Short direct download link for SMS/WhatsApp/Custom Tabs
+  app.get('/dl/:id', (req, res) => {
+    const { id } = req.params;
+    const file = downloadCache.get(id);
+    if (file) {
+      return res.redirect(`/api/download/${id}/${encodeURIComponent(file.fileName)}`);
+    }
+    const diskMetaPath = path.join(DISK_CACHE_DIR, `${id}.json`);
+    if (fs.existsSync(diskMetaPath)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(diskMetaPath, 'utf8'));
+        return res.redirect(`/api/download/${id}/${encodeURIComponent(meta.fileName)}`);
+      } catch (_) {}
+    }
+    return res.status(404).send('Download file not found or expired.');
+  });
+
   // Health check
   app.get('/api/health', (_req, res) => {
     res.json({

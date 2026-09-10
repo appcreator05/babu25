@@ -40,7 +40,9 @@ import {
   createDownloadUrl,
   openDeviceDownloadsFolder,
   isPublicHttpUrl,
+  blobToBase64,
 } from '../utils/fileDownloader';
+import { isAppAssetsOrHashUrl } from '../utils/apiConfig';
 
 interface OkSaveModalProps {
   isOpen: boolean;
@@ -165,18 +167,20 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
 
   const getActivePackageInfo = () => {
     if (activeTab === 'apk') {
+      const rawUrl = buildResult?.apk.downloadUrl || '';
       return {
         pkg: apkPackage,
         fileName: buildResult?.apk.fileName || apkPackage?.fileName || `${config.appName.toLowerCase()}.apk`,
-        downloadUrl: buildResult?.apk.downloadUrl || '',
+        downloadUrl: !isAppAssetsOrHashUrl(rawUrl) ? rawUrl : '',
         mimeType: 'application/vnd.android.package-archive',
         label: 'APK (.apk)',
       };
     }
+    const rawUrl = buildResult?.aab?.downloadUrl || '';
     return {
       pkg: aabPackage,
       fileName: buildResult?.aab?.fileName || aabPackage?.fileName || `${config.appName.toLowerCase()}.aab`,
-      downloadUrl: buildResult?.aab?.downloadUrl || '',
+      downloadUrl: !isAppAssetsOrHashUrl(rawUrl) ? rawUrl : '',
       mimeType: 'application/octet-stream',
       label: 'AAB (.aab)',
     };
@@ -300,18 +304,50 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
   };
 
   const handleDownloadApkInCustomTab = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!buildResult?.apk) return;
+
+    // Check if running inside native Android App with direct file saver bridge:
+    const androidBridge =
+      typeof window !== 'undefined'
+        ? (window as any).AndroidDownloader ||
+          (window as any).AndroidApp ||
+          (window as any).Android ||
+          (window as any).JSBridge
+        : null;
+
+    if (androidBridge && typeof androidBridge.saveBase64File === 'function' && apkPackage?.blob) {
+      try {
+        onToast('💾 APK সরাসরি ফোনের Downloads ফোল্ডারে সেভ হচ্ছে...');
+        const base64Data = await blobToBase64(apkPackage.blob);
+        androidBridge.saveBase64File(
+          base64Data,
+          buildResult.apk.fileName,
+          'application/vnd.android.package-archive'
+        );
+        onToast('✅ APK ফোনের Download ফোল্ডারে সেভ হয়েছে!');
+        return;
+      } catch (err) {
+        console.warn('Native save failed, continuing to custom tabs/download:', err);
+      }
+    }
+
     onToast('🚀 Custom Tab ওপেন হচ্ছে এবং APK ডাউনলোড শুরু হচ্ছে...');
 
     let url = buildResult.apk.downloadUrl;
-    if (!url && apkPackage?.blob) {
+    if (isAppAssetsOrHashUrl(url) && apkPackage?.blob) {
       try {
         url = await createDownloadUrl(apkPackage.blob, buildResult.apk.fileName, 'application/vnd.android.package-archive');
-        setBuildResult(prev => prev ? { ...prev, apk: { ...prev.apk, downloadUrl: url } } : prev);
+        if (!isAppAssetsOrHashUrl(url)) {
+          setBuildResult(prev => prev ? { ...prev, apk: { ...prev.apk, downloadUrl: url } } : prev);
+        }
       } catch (_) {}
     }
 
-    if (url) {
+    if (url && !isAppAssetsOrHashUrl(url)) {
       openInChromeCustomTabs(url);
     } else if (apkPackage?.blob) {
       await downloadBlobOrFile(
@@ -324,18 +360,50 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
   };
 
   const handleDownloadAabInCustomTab = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
     if (!buildResult?.aab) return;
+
+    // Check if running inside native Android App with direct file saver bridge:
+    const androidBridge =
+      typeof window !== 'undefined'
+        ? (window as any).AndroidDownloader ||
+          (window as any).AndroidApp ||
+          (window as any).Android ||
+          (window as any).JSBridge
+        : null;
+
+    if (androidBridge && typeof androidBridge.saveBase64File === 'function' && aabPackage?.blob) {
+      try {
+        onToast('💾 AAB সরাসরি ফোনের Downloads ফোল্ডারে সেভ হচ্ছে...');
+        const base64Data = await blobToBase64(aabPackage.blob);
+        androidBridge.saveBase64File(
+          base64Data,
+          buildResult.aab.fileName,
+          'application/octet-stream'
+        );
+        onToast('✅ AAB ফোনের Download ফোল্ডারে সেভ হয়েছে!');
+        return;
+      } catch (err) {
+        console.warn('Native save failed, continuing to custom tabs/download:', err);
+      }
+    }
+
     onToast('📦 Custom Tab ওপেন হচ্ছে এবং AAB ডাউনলোড শুরু হচ্ছে...');
 
     let url = buildResult.aab.downloadUrl;
-    if (!url && aabPackage?.blob) {
+    if (isAppAssetsOrHashUrl(url) && aabPackage?.blob) {
       try {
         url = await createDownloadUrl(aabPackage.blob, buildResult.aab.fileName, 'application/octet-stream');
-        setBuildResult(prev => prev ? { ...prev, aab: prev.aab ? { ...prev.aab, downloadUrl: url } : null } : prev);
+        if (!isAppAssetsOrHashUrl(url)) {
+          setBuildResult(prev => prev ? { ...prev, aab: prev.aab ? { ...prev.aab, downloadUrl: url } : null } : prev);
+        }
       } catch (_) {}
     }
 
-    if (url) {
+    if (url && !isAppAssetsOrHashUrl(url)) {
       openInChromeCustomTabs(url);
     } else if (aabPackage?.blob) {
       await downloadBlobOrFile(
@@ -663,11 +731,8 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
 
                     {/* Direct Download in Browser / Custom Tabs */}
                     <div className="pt-1 flex flex-col sm:flex-row gap-2">
-                      <a
-                        href={info.downloadUrl || '#'}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        download={info.fileName}
+                      <button
+                        type="button"
                         onClick={(e) => {
                           if (activeTab === 'apk') {
                             handleDownloadApkInCustomTab(e);
@@ -675,12 +740,12 @@ export const OkSaveModal: React.FC<OkSaveModalProps> = ({
                             handleDownloadAabInCustomTab(e);
                           }
                         }}
-                        className="flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 active:scale-98 transition cursor-pointer text-center no-underline"
+                        className="flex-1 flex items-center justify-center gap-2 py-3.5 px-4 rounded-xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/25 active:scale-98 transition cursor-pointer text-center"
                       >
                         <Download className="w-4 h-4" />
                         <span>Custom Tab দিয়ে ডাউনলোড</span>
                         <Globe className="w-3.5 h-3.5 text-emerald-200" />
-                      </a>
+                      </button>
 
                       <button
                         type="button"

@@ -481,6 +481,9 @@ ${
 
     private fun setupDownloadListener() {
         webView.setDownloadListener { url, userAgent, contentDisposition, mimetype, _ ->
+            if (url.isNullOrBlank() || url == "#" || url.startsWith("#") || url.contains("appassets.androidplatform.net")) {
+                return@setDownloadListener
+            }
             try {
                 // Open in Chrome Custom Tabs so Chrome handles full background download and saving
                 openInCustomTabs(url)
@@ -757,12 +760,16 @@ ${
         @JavascriptInterface
         fun openInCustomTabs(url: String) {
             runOnUiThread {
+                val trimmed = url.trim()
+                if (trimmed.isBlank() || trimmed == "#" || trimmed.startsWith("#") || trimmed.contains("appassets.androidplatform.net") || trimmed.startsWith("blob:") || trimmed.startsWith("data:")) {
+                    return@runOnUiThread
+                }
                 try {
-                    val target = if (url.isNotBlank()) url else "${config.websiteUrl}"
+                    val target = if (trimmed.isNotBlank()) trimmed else "${config.websiteUrl}"
                     this@MainActivity.openInCustomTabs(target)
                 } catch (e: Exception) {
                     try {
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)).apply {
                             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
                         startActivity(intent)
@@ -774,28 +781,30 @@ ${
         @JavascriptInterface
         fun downloadUrl(url: String) {
             runOnUiThread {
-                if (url.isNotBlank()) {
+                val trimmed = url.trim()
+                if (trimmed.isBlank() || trimmed == "#" || trimmed.startsWith("#") || trimmed.contains("appassets.androidplatform.net") || trimmed.startsWith("blob:") || trimmed.startsWith("data:")) {
+                    return@runOnUiThread
+                }
+                try {
+                    val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    val fileName = URLUtil.guessFileName(trimmed, null, "application/vnd.android.package-archive")
+                    val request = DownloadManager.Request(Uri.parse(trimmed)).apply {
+                        setMimeType("application/vnd.android.package-archive")
+                        setTitle(fileName)
+                        setDescription("Downloading file...")
+                        setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                    }
+                    dm.enqueue(request)
+                    Toast.makeText(this@MainActivity, "Download started: $fileName", Toast.LENGTH_SHORT).show()
+                } catch (e: Exception) {
                     try {
-                        val dm = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                        val fileName = URLUtil.guessFileName(url, null, "application/vnd.android.package-archive")
-                        val request = DownloadManager.Request(Uri.parse(url)).apply {
-                            setMimeType("application/vnd.android.package-archive")
-                            setTitle(fileName)
-                            setDescription("Downloading file...")
-                            setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                         }
-                        dm.enqueue(request)
-                        Toast.makeText(this@MainActivity, "Download started: $fileName", Toast.LENGTH_SHORT).show()
-                    } catch (e: Exception) {
-                        try {
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            startActivity(intent)
-                        } catch (err: Exception) {
-                            Toast.makeText(this@MainActivity, "Download error: \${err.localizedMessage}", Toast.LENGTH_SHORT).show()
-                        }
+                        startActivity(intent)
+                    } catch (err: Exception) {
+                        Toast.makeText(this@MainActivity, "Download error: \${err.localizedMessage}", Toast.LENGTH_SHORT).show()
                     }
                 }
             }
@@ -833,6 +842,10 @@ ${
      * Opens links in Chrome Custom Tabs with modern, secure in-app browsing
      */
     fun openInCustomTabs(url: String) {
+        val trimmed = url.trim()
+        if (trimmed.isBlank() || trimmed == "#" || trimmed.startsWith("#") || trimmed.contains("appassets.androidplatform.net") || trimmed.startsWith("blob:") || trimmed.startsWith("data:")) {
+            return
+        }
         try {
             val customTabsIntent = CustomTabsIntent.Builder()
                 .setShowTitle(true)
@@ -843,10 +856,10 @@ ${
                 // Explicitly prefer Chrome package if installed for best compatibility
                 customTabsIntent.intent.setPackage("com.android.chrome")
             } catch (_: Exception) {}
-            customTabsIntent.launchUrl(this@MainActivity, Uri.parse(url))
+            customTabsIntent.launchUrl(this@MainActivity, Uri.parse(trimmed))
         } catch (e: Exception) {
             try {
-                val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
+                val fallback = Intent(Intent.ACTION_VIEW, Uri.parse(trimmed)).apply {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 startActivity(fallback)

@@ -1,4 +1,5 @@
 import { blobToBase64, createDownloadUrl, isPublicHttpUrl } from './fileDownloader';
+import { buildApiUrl } from './apiConfig';
 
 export interface GitHubCredentials {
   token: string;
@@ -53,7 +54,7 @@ export interface GitHubUploadResult {
 
 export async function checkServerGitHubConfig(): Promise<{ configuredOnServer: boolean; serverRepo: string }> {
   try {
-    const res = await fetch('/api/github/config-status');
+    const res = await fetch(buildApiUrl('/api/github/config-status'));
     if (res.ok) {
       return await res.json();
     }
@@ -79,7 +80,7 @@ export async function uploadApkToGitHubRelease(
     ? 'application/octet-stream'
     : 'application/vnd.android.package-archive';
 
-  const res = await fetch('/api/github/upload-release', {
+  const res = await fetch(buildApiUrl('/api/github/upload-release'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -127,7 +128,7 @@ export async function uploadToFreeCloud(
 
   try {
     const base64 = await blobToBase64(blob);
-    const res = await fetch('/api/cloud-upload', {
+    const res = await fetch(buildApiUrl('/api/cloud-upload'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -208,7 +209,7 @@ export async function uploadBothPackages(
       const controller = new AbortController();
       const githubTimer = setTimeout(() => controller.abort(), 35000);
 
-      const res = await fetch('/api/github/upload-both-release', {
+      const res = await fetch(buildApiUrl('/api/github/upload-both-release'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

@@ -1,3 +1,5 @@
+import { buildApiUrl, getBackendBaseUrl, isAppAssetsOrHashUrl } from './apiConfig';
+
 /**
  * Utility for downloading and sharing files seamlessly on both Web browsers and inside
  * Android WebView wrappers using Native Chrome Custom Tabs, Android MediaStore bridge,
@@ -43,7 +45,8 @@ export async function createDownloadUrl(
   mimeType: string = 'application/vnd.android.package-archive'
 ): Promise<string> {
   const base64 = await blobToBase64(blob);
-  const response = await fetch('/api/prepare-download', {
+  const targetApi = buildApiUrl('/api/prepare-download');
+  const response = await fetch(targetApi, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ fileName, base64, mimeType }),
@@ -56,27 +59,23 @@ export async function createDownloadUrl(
   const data = await response.json();
 
   // 1. If server returned an absolute HTTPS URL, use it directly (this is the authoritative server hosting the file)
-  if (data.downloadUrl && (data.downloadUrl.startsWith('https://') || data.downloadUrl.startsWith('http://'))) {
-    if (!data.downloadUrl.includes('localhost') && !data.downloadUrl.includes('127.0.0.1')) {
+  if (
+    data.downloadUrl &&
+    (data.downloadUrl.startsWith('https://') || data.downloadUrl.startsWith('http://'))
+  ) {
+    if (
+      !data.downloadUrl.includes('localhost') &&
+      !data.downloadUrl.includes('127.0.0.1') &&
+      !data.downloadUrl.includes('appassets.androidplatform.net')
+    ) {
       return data.downloadUrl;
     }
   }
 
-  const origin = typeof window !== 'undefined' && window.location.origin ? window.location.origin : '';
-  const isLocalOrigin = origin.includes('localhost') || origin.includes('127.0.0.1');
-
-  // 2. Only use origin if not a foreign host (e.g. blogspot, wordpress, etc.) and not android asset
-  if (origin && !isLocalOrigin && !origin.includes('appassets.androidplatform.net') && (origin.startsWith('https://') || origin.startsWith('http://'))) {
-    const isForeignHost = origin.includes('blogspot.') || origin.includes('wordpress.') || origin.includes('github.io');
-    if (!isForeignHost) {
-      return `${origin}${data.downloadPath || ('/api/download/' + data.id + '/' + encodeURIComponent(fileName))}`;
-    }
-  }
-
-  if (data.downloadUrl) {
-    return data.downloadUrl;
-  }
-  return `${origin}${data.downloadPath || ('/api/download/' + data.id + '/' + encodeURIComponent(fileName))}`;
+  // 2. Otherwise compose URL using the authoritative backend server base URL
+  const backendBase = getBackendBaseUrl().replace(/\/+$/, '');
+  const downloadPath = data.downloadPath || ('/api/download/' + data.id + '/' + encodeURIComponent(fileName));
+  return `${backendBase}${downloadPath}`;
 }
 
 /**
@@ -561,17 +560,24 @@ export function buildBrowserIntent(url: string): string {
  * Opens a URL in Chrome Custom Tabs (inside Android app) or a new browser tab (on web)
  */
 export function openInChromeCustomTabs(url?: string): void {
-  const rawUrl =
-    url ||
-    (typeof window !== 'undefined'
-      ? window.location.href
-      : 'https://apkcreator25.blogspot.com');
+  // Never allow appassets.androidplatform.net or '#' to be launched in Chrome!
+  let rawUrl = (url || '').trim();
 
-  const origin = typeof window !== 'undefined' ? window.location.origin : '';
+  if (isAppAssetsOrHashUrl(rawUrl)) {
+    // If invalid or local android asset url, fallback to canonical web server
+    rawUrl = getBackendBaseUrl();
+  }
+
   const targetUrl =
     rawUrl.startsWith('http://') || rawUrl.startsWith('https://')
       ? rawUrl
-      : `${origin}${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
+      : buildApiUrl(rawUrl);
+
+  // Hard safety check: Never open local WebView asset domain in Chrome
+  if (targetUrl.includes('appassets.androidplatform.net') || targetUrl.endsWith('#')) {
+    console.warn('Blocked opening local app asset url in Chrome Custom Tabs:', targetUrl);
+    return;
+  }
 
   // 1. Android Bridge if running inside native Android wrapper
   const androidBridge =

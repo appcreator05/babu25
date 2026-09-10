@@ -3,6 +3,11 @@ import { AppConfig } from '../types';
 import {
   generateManifestXml,
   generateAppConfigJson,
+  generateMainActivityKt,
+  generateBuildGradle,
+  generateActivityMainXml,
+  generateActivitySplashXml,
+  generateThemesXml,
 } from './codeGenerator';
 
 /**
@@ -174,6 +179,15 @@ export async function buildDirectApkFile(
     `<!DOCTYPE html><html><head><meta http-equiv="refresh" content="0; url=${config.websiteUrl}"></head><body>Loading...</body></html>`
   );
 
+  // Embed full native Kotlin & Android source code inside APK
+  const srcFolder = assetsFolder.folder('src')!;
+  srcFolder.file('MainActivity.kt', generateMainActivityKt(config));
+  srcFolder.file('AndroidManifest.xml', generateManifestXml(config));
+  srcFolder.file('build.gradle.kts', generateBuildGradle(config));
+  srcFolder.file('activity_main.xml', generateActivityMainXml(config));
+  srcFolder.file('activity_splash.xml', generateActivitySplashXml(config));
+  srcFolder.file('themes.xml', generateThemesXml());
+
   // res folder
   const resFolder = zip.folder('res')!;
   const rawFolder = resFolder.folder('raw')!;
@@ -265,6 +279,15 @@ export async function buildDirectAabFile(
   // base/assets
   const assetsFolder = baseFolder.folder('assets')!;
   assetsFolder.file('app_config.json', generateAppConfigJson(config));
+
+  // Embed full native Kotlin & Android source code inside AAB bundle
+  const srcFolder = assetsFolder.folder('src')!;
+  srcFolder.file('MainActivity.kt', generateMainActivityKt(config));
+  srcFolder.file('AndroidManifest.xml', generateManifestXml(config));
+  srcFolder.file('build.gradle.kts', generateBuildGradle(config));
+  srcFolder.file('activity_main.xml', generateActivityMainXml(config));
+  srcFolder.file('activity_splash.xml', generateActivitySplashXml(config));
+  srcFolder.file('themes.xml', generateThemesXml());
 
   // If user uploaded a custom keystore file, package it into bundle
   if (config.keystore?.useCustomKeystore && config.keystore.keystoreBase64) {

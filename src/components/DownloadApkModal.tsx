@@ -42,7 +42,9 @@ import {
   downloadViaCustomTabs,
   shareToWhatsApp,
   isPublicHttpUrl,
+  blobToBase64,
 } from '../utils/fileDownloader';
+import { isAppAssetsOrHashUrl, getBackendBaseUrl } from '../utils/apiConfig';
 import {
   getSavedGitHubConfig,
   saveGitHubConfig,
@@ -303,18 +305,51 @@ export const DownloadApkModal: React.FC<DownloadApkModalProps> = ({
   const handleCustomTabDownload = async () => {
     if (!builtFile) return;
     setDownloading(true);
+
+    // If running inside Android App, directly save to Downloads storage
+    const androidBridge =
+      typeof window !== 'undefined'
+        ? (window as any).AndroidDownloader ||
+          (window as any).AndroidApp ||
+          (window as any).Android ||
+          (window as any).JSBridge
+        : null;
+
+    if (androidBridge && typeof androidBridge.saveBase64File === 'function') {
+      try {
+        onToast('💾 ফাইলটি সরাসরি ডিভাইসে সেভ হচ্ছে...');
+        const base64Data = await blobToBase64(builtFile.blob);
+        const mimeType =
+          builtFile.format === 'apk'
+            ? 'application/vnd.android.package-archive'
+            : 'application/octet-stream';
+        androidBridge.saveBase64File(base64Data, builtFile.fileName, mimeType);
+        onToast('✅ ফাইলটি আপনার ফোনের Download ফোল্ডারে সেভ হয়েছে!');
+        setTimeout(() => setDownloading(false), 800);
+        return;
+      } catch (err) {
+        console.warn('Native save failed, continuing to custom tab download:', err);
+      }
+    }
+
     try {
       const mimeType =
         builtFile.format === 'apk'
           ? 'application/vnd.android.package-archive'
           : 'application/octet-stream';
       let url = serverDownloadUrl;
-      if (!url) {
+      if (!url || isAppAssetsOrHashUrl(url)) {
         url = await createDownloadUrl(builtFile.blob, builtFile.fileName, mimeType);
-        setServerDownloadUrl(url);
+        if (!isAppAssetsOrHashUrl(url)) {
+          setServerDownloadUrl(url);
+        }
       }
-      openInChromeCustomTabs(url);
-      onToast('🚀 Custom Tab দিয়ে ডাউনলোড শুরু হয়েছে! ফোনের Notifications ও Download ফোল্ডার চেক করুন।');
+      if (url && !isAppAssetsOrHashUrl(url)) {
+        openInChromeCustomTabs(url);
+        onToast('🚀 Custom Tab দিয়ে ডাউনলোড শুরু হয়েছে! ফোনের Notifications ও Download ফোল্ডার চেক করুন।');
+      } else {
+        await downloadBlobOrFile(builtFile.blob, builtFile.fileName, mimeType, true);
+      }
     } catch (err: any) {
       console.error('Custom tab download error:', err);
       onToast('ডাউনলোড প্রস্তুত করতে সমস্যা: ' + (err?.message || 'Error'));
@@ -493,8 +528,8 @@ export const DownloadApkModal: React.FC<DownloadApkModalProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => openInChromeCustomTabs()}
-                  className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition"
+                  onClick={() => openInChromeCustomTabs(getBackendBaseUrl())}
+                  className="flex items-center gap-2 px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-semibold transition cursor-pointer"
                 >
                   <Globe className="w-3.5 h-3.5 text-cyan-400" />
                   <span>Chrome এ খুলুন</span>

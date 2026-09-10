@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#020617"/>
+    </linearGradient>
+    <linearGradient id="brand" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#10b981"/>
+      <stop offset="50%" stop-color="#06b6d4"/>
+      <stop offset="100%" stop-color="#3b82f6"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <rect x="12" y="12" width="488" height="488" rx="100" fill="none" stroke="url(#glow)" stroke-width="4" stroke-opacity="0.3"/>
+
+  <!-- Android Robot Head & Antennas -->
+  <g transform="translate(156, 120)">
+    <!-- Left Antenna -->
+    <line x1="45" y1="25" x2="25" y2="0" stroke="url(#glow)" stroke-width="12" stroke-linecap="round"/>
+    <!-- Right Antenna -->
+    <line x1="155" y1="25" x2="175" y2="0" stroke="url(#glow)" stroke-width="12" stroke-linecap="round"/>
+    <!-- Head Dome -->
+    <path d="M 15 75 A 85 85 0 0 1 185 75 Z" fill="url(#brand)"/>
+    <!-- Eyes -->
+    <circle cx="65" cy="55" r="9" fill="#0f172a"/>
+    <circle cx="135" cy="55" r="9" fill="#0f172a"/>
+  </g>
+
+  <!-- Phone/Card Container -->
+  <rect x="136" y="225" width="240" height="180" rx="24" fill="#1e293b" stroke="#334155" stroke-width="4"/>
+
+  <!-- Code / Website Conversion Graphic -->
+  <path d="M 180 300 L 210 270 L 210 330 Z" fill="#38bdf8"/>
+  <path d="M 332 300 L 302 270 L 302 330 Z" fill="#38bdf8"/>
+  <rect x="236" y="260" width="40" height="80" rx="8" fill="#10b981"/>
+  <circle cx="256" cy="322" r="5" fill="#0f172a"/>
+
+  <!-- Bottom Accent Text / Pill -->
+  <rect x="176" y="425" width="160" height="32" rx="16" fill="url(#brand)"/>
+  <text x="256" y="446" fill="#ffffff" font-family="system-ui, -apple-system, sans-serif" font-weight="bold" font-size="14" text-anchor="middle" letter-spacing="1">APK CREATOR</text>
+</svg>

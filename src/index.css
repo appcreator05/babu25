@@ -1,0 +1,13 @@
+@import "tailwindcss";
+
+html, body, #root {
+  width: 100%;
+  max-width: 100vw;
+  overflow-x: hidden;
+  box-sizing: border-box;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  overflow-wrap: break-word;
+}
